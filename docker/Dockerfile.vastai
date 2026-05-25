@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CUTLASS_PATH=/opt/cutlass \
     PROTENIX_ROOT_DIR=/opt/protenix_data
 
-ARG PROTENIX_PRELOAD_MODELS=protenix-v2,protenix_base_default_v1.0.0,protenix_base_20250630_v1.0.0,protenix_base_default_v0.5.0,protenix_base_constraint_v0.5.0,protenix_mini_esm_v0.5.0,protenix_mini_ism_v0.5.0,protenix_mini_default_v0.5.0,protenix_tiny_default_v0.5.0
+ARG PROTENIX_PRELOAD_MODELS=protenix-v2
 ARG PROTENIX_PRELOAD_TEMPLATE_DB=false
 ARG PROTENIX_PRELOAD_RNA_DBS=false
 ENV PROTENIX_PRELOAD_MODELS=${PROTENIX_PRELOAD_MODELS} \
