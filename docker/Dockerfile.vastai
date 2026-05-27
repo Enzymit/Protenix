@@ -58,6 +58,10 @@ RUN --mount=type=bind,from=protenix_weights,source=/,target=/tmp/protenix_weight
  && cp /tmp/protenix_weights/checkpoint/protenix-v2.pt "${PROTENIX_ROOT_DIR}/checkpoint/protenix-v2.pt" \
  && cp -a /tmp/protenix_weights/common/. "${PROTENIX_ROOT_DIR}/common/"
 
+RUN ln -sfn "${PROTENIX_ROOT_DIR}/checkpoint" /root/checkpoint \
+ && ln -sfn "${PROTENIX_ROOT_DIR}/common" /root/common \
+ && printf 'PROTENIX_ROOT_DIR=%s\n' "${PROTENIX_ROOT_DIR}" >> /etc/environment
+
 RUN python - <<'PY'
 import os
 import urllib.request
