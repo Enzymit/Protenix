@@ -53,9 +53,10 @@ RUN python -m pip install --no-cache-dir -e . -i https://pypi.org/simple \
  && protenix --help >/dev/null \
  && mkdir -p "${PROTENIX_ROOT_DIR}" /workspace
 
-RUN --mount=type=bind,from=protenix_weights,source=/checkpoint/protenix-v2.pt,target=/tmp/protenix-v2.pt,ro \
-    mkdir -p "${PROTENIX_ROOT_DIR}/checkpoint" \
- && cp /tmp/protenix-v2.pt "${PROTENIX_ROOT_DIR}/checkpoint/protenix-v2.pt"
+RUN --mount=type=bind,from=protenix_weights,source=/,target=/tmp/protenix_weights,ro \
+    mkdir -p "${PROTENIX_ROOT_DIR}/checkpoint" "${PROTENIX_ROOT_DIR}/common" \
+ && cp /tmp/protenix_weights/checkpoint/protenix-v2.pt "${PROTENIX_ROOT_DIR}/checkpoint/protenix-v2.pt" \
+ && cp -a /tmp/protenix_weights/common/. "${PROTENIX_ROOT_DIR}/common/"
 
 RUN python - <<'PY'
 import os
