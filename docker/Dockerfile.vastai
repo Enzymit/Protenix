@@ -140,4 +140,7 @@ if truthy("PROTENIX_PRELOAD_RNA_DBS"):
     )
 PY
 
+RUN ln -sf /opt/conda/bin/protenix /usr/local/bin/protenix \
+ && /usr/local/bin/protenix --help >/dev/null
+
 WORKDIR /workspace
