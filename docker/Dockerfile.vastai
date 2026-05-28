@@ -1,151 +1,84 @@
 # syntax=docker/dockerfile:1
-FROM vastai/linux-desktop:cuda-12.6-ubuntu-22.04
+ARG RUNTIME_IMAGE=vastai/base-image:cuda-12.4.1-auto
+
+FROM mambaorg/micromamba:1.5.8 AS protenix-env
+
+USER root
+ENV MAMBA_ROOT_PREFIX=/opt/conda \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN micromamba create -y -n protenix -c conda-forge python=3.11 pip \
+ && micromamba clean -a -y
+
+ENV PATH="/opt/conda/envs/protenix/bin:${PATH}"
+
+WORKDIR /tmp/protenix-src
+COPY . .
+
+RUN python -m pip install --upgrade pip setuptools wheel -i https://pypi.org/simple \
+ && python -m pip install -i https://pypi.org/simple \
+        torch==2.7.1 \
+        cuequivariance-ops-torch-cu12==0.8.0 \
+        cuequivariance-torch==0.8.0 \
+        "scipy>=1.9.0" \
+        ml_collections==1.1.0 \
+        tqdm==4.67.1 \
+        pandas==2.3.1 \
+        PyYAML==6.0.2 \
+        rdkit==2025.9.3 \
+        biopython==1.85 \
+        biotite==1.4.0 \
+        fair-esm==2.0.0 \
+        scikit-learn==1.7.1 \
+        "pydantic>=2.0.0" \
+        triton==3.3.1 \
+        optree==0.17.0 \
+        protobuf==6.31.1 \
+        numpy==2.4.1 \
+        "networkx>=3.4.2" \
+        click \
+        requests \
+ && python -m pip install --no-deps . -i https://pypi.org/simple \
+ && find /opt/conda/envs/protenix -type d -name "__pycache__" -prune -exec rm -rf {} + \
+ && find /opt/conda/envs/protenix -type f \( -name "*.pyc" -o -name "*.pyo" -o -name "*.a" \) -delete \
+ && rm -rf /root/.cache /tmp/*
+
+FROM ${RUNTIME_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    CUTLASS_PATH=/opt/cutlass \
-    PROTENIX_ROOT_DIR=/opt/protenix_data
-
-ARG PROTENIX_PRELOAD_MODELS=protenix-v2
-ARG PROTENIX_PRELOAD_TEMPLATE_DB=false
-ARG PROTENIX_PRELOAD_RNA_DBS=false
-ENV PROTENIX_PRELOAD_MODELS=${PROTENIX_PRELOAD_MODELS} \
-    PROTENIX_PRELOAD_TEMPLATE_DB=${PROTENIX_PRELOAD_TEMPLATE_DB} \
-    PROTENIX_PRELOAD_RNA_DBS=${PROTENIX_PRELOAD_RNA_DBS}
+    PROTENIX_ENV=/opt/conda/envs/protenix \
+    PROTENIX_ROOT_DIR=/opt/protenix_data \
+    LAYERNORM_TYPE=torch \
+    PATH="/opt/conda/envs/protenix/bin:${PATH}" \
+    LD_LIBRARY_PATH="/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_cupti/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cufft/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cufile/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/curand/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusolver/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusparse/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusparselt/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nccl/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nvjitlink/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nvtx/lib:/opt/conda/envs/protenix/lib"
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         ca-certificates \
-        curl \
-        git \
-        wget \
-        build-essential \
-        gcc \
-        g++ \
-        libc6-dev \
-        make \
-        postgresql \
         hmmer \
         kalign \
+        libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh \
- && bash /tmp/miniconda.sh -b -p /opt/conda \
- && rm /tmp/miniconda.sh
-ENV PATH="/opt/conda/bin:$PATH"
-
-RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
- && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r \
- && conda install --solver=classic -y python=3.11 pip \
- && conda clean -a -y
-
-RUN git clone -b v3.5.1 https://github.com/NVIDIA/cutlass.git /opt/cutlass
-
-WORKDIR /opt/protenix
-COPY requirements.txt .
-RUN python -m pip install --no-cache-dir -r requirements.txt -i https://pypi.org/simple
-
-COPY . .
-RUN python -m pip install --no-cache-dir -e . -i https://pypi.org/simple \
- && protenix --help >/dev/null \
- && mkdir -p "${PROTENIX_ROOT_DIR}" /workspace
+COPY --from=protenix-env /opt/conda/envs/protenix /opt/conda/envs/protenix
 
 RUN --mount=type=bind,from=protenix_weights,source=/,target=/tmp/protenix_weights,ro \
-    mkdir -p "${PROTENIX_ROOT_DIR}/checkpoint" "${PROTENIX_ROOT_DIR}/common" \
+    mkdir -p "${PROTENIX_ROOT_DIR}/checkpoint" "${PROTENIX_ROOT_DIR}/common" /workspace \
  && cp /tmp/protenix_weights/checkpoint/protenix-v2.pt "${PROTENIX_ROOT_DIR}/checkpoint/protenix-v2.pt" \
  && cp -a /tmp/protenix_weights/common/. "${PROTENIX_ROOT_DIR}/common/"
 
 RUN ln -sfn "${PROTENIX_ROOT_DIR}/checkpoint" /root/checkpoint \
  && ln -sfn "${PROTENIX_ROOT_DIR}/common" /root/common \
- && printf 'PROTENIX_ROOT_DIR=%s\n' "${PROTENIX_ROOT_DIR}" >> /etc/environment
+ && printf 'PROTENIX_ROOT_DIR=%s\nLAYERNORM_TYPE=torch\n' "${PROTENIX_ROOT_DIR}" >> /etc/environment
 
-RUN python - <<'PY'
-import os
-import urllib.request
-from pathlib import Path
-
-from protenix.web_service.dependency_url import URL
-from runner.rna_msa_search import (
-    NT_SEARCH_DATABASE_URL,
-    RFAM_SEARCH_DATABASE_URL,
-    RNACENTRAL_SEARCH_DATABASE_URL,
-)
-from runner.template_search import TEMPLATE_SEARCH_DATABASE_URL
-
-root = Path(os.environ["PROTENIX_ROOT_DIR"])
-preload_models = [
-    item.strip()
-    for item in os.environ.get("PROTENIX_PRELOAD_MODELS", "").split(",")
-    if item.strip()
-]
-
-
-def truthy(name: str) -> bool:
-    return os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
-
-
-def download(url: str, path: Path) -> None:
-    if path.exists():
-        print(f"Already cached: {path}")
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    print(f"Downloading {url} -> {path}")
-    urllib.request.urlretrieve(url, tmp_path)
-    tmp_path.replace(path)
-
-
-for cache_name, relative_path in {
-    "ccd_components_file": "common/components.cif",
-    "ccd_components_rdkit_mol_file": "common/components.cif.rdkit_mol.pkl",
-    "pdb_cluster_file": "common/clusters-by-entity-40.txt",
-    "obsolete_release_data_csv": "common/obsolete_release_date.csv",
-    "obsolete_pdbs_path": "common/obsolete_to_successor.json",
-    "release_dates_path": "common/release_date_cache.json",
-}.items():
-    download(URL[cache_name], root / relative_path)
-
-checkpoint_dir = root / "checkpoint"
-for model_name in preload_models:
-    download(URL[model_name], checkpoint_dir / f"{model_name}.pt")
-    if "esm" in model_name:
-        download(URL["esm2_t36_3B_UR50D"], checkpoint_dir / "esm2_t36_3B_UR50D.pt")
-        download(
-            URL["esm2_t36_3B_UR50D-contact-regression"],
-            checkpoint_dir / "esm2_t36_3B_UR50D-contact-regression.pt",
-        )
-    if "ism" in model_name:
-        download(URL["esm2_t36_3B_UR50D_ism"], checkpoint_dir / "esm2_t36_3B_UR50D_ism.pt")
-        download(
-            URL["esm2_t36_3B_UR50D_ism-contact-regression"],
-            checkpoint_dir / "esm2_t36_3B_UR50D_ism-contact-regression.pt",
-        )
-
-if truthy("PROTENIX_PRELOAD_TEMPLATE_DB"):
-    download(
-        TEMPLATE_SEARCH_DATABASE_URL,
-        root / "search_database/pdb_seqres_2022_09_28.fasta",
-    )
-
-if truthy("PROTENIX_PRELOAD_RNA_DBS"):
-    download(
-        NT_SEARCH_DATABASE_URL,
-        root / "search_database/nt_rna_2023_02_23_clust_seq_id_90_cov_80_rep_seq.fasta",
-    )
-    download(
-        RFAM_SEARCH_DATABASE_URL,
-        root / "search_database/rfam_14_9_clust_seq_id_90_cov_80_rep_seq.fasta",
-    )
-    download(
-        RNACENTRAL_SEARCH_DATABASE_URL,
-        root / "search_database/rnacentral_active_seq_id_90_cov_80_linclust.fasta",
-    )
-PY
-
-RUN ln -sf /opt/conda/bin/protenix /usr/local/bin/protenix \
- && /usr/local/bin/protenix --help >/dev/null
+RUN protenix --help >/dev/null \
+ && python -c "import importlib.util; import torch; from rdkit import Chem; import biotite; import sklearn; import triton; import esm; from runner.batch_inference import protenix_cli; from protenix.data.inference.infer_dataloader import get_inference_dataloader; assert importlib.util.find_spec('cuequivariance_ops_torch'); print('torch', torch.__version__, 'cuda', torch.version.cuda); print('protenix cli', protenix_cli.name)" \
+ && find /opt/conda/envs/protenix -type d -name "__pycache__" -prune -exec rm -rf {} + \
+ && find /opt/conda/envs/protenix -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete
 
 WORKDIR /workspace
