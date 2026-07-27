@@ -61,13 +61,22 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        awscli \
         ca-certificates \
+        curl \
         hmmer \
         kalign \
         libgomp1 \
         tmux \
+        unzip \
  && rm -rf /var/lib/apt/lists/*
+
+# Install AWS CLI v2 directly; the Vast.ai base image does not guarantee an
+# Ubuntu awscli package is enabled.
+RUN curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip \
+        -o /tmp/awscliv2.zip \
+ && unzip -q /tmp/awscliv2.zip -d /tmp \
+ && /tmp/aws/install --update \
+ && rm -rf /tmp/aws /tmp/awscliv2.zip
 
 COPY --from=protenix-env /opt/conda/envs/protenix /opt/conda/envs/protenix
 

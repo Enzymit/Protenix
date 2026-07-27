@@ -66,7 +66,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # SkyPilot connects to Docker workers over SSH after starting the container.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        awscli \
         build-essential \
         ca-certificates \
         curl \
@@ -77,6 +76,7 @@ RUN apt-get update \
         openssh-server \
         rsync \
         tmux \
+        unzip \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d \
  && chmod 700 /root/.ssh \
@@ -85,6 +85,14 @@ RUN apt-get update \
         'PubkeyAuthentication yes' \
         'PasswordAuthentication no' \
         > /etc/ssh/sshd_config.d/99-skypilot.conf
+
+# Install AWS CLI v2 directly; Ubuntu's awscli package is not available in
+# the NVIDIA CUDA 12.8 Ubuntu 24.04 image.
+RUN curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip \
+        -o /tmp/awscliv2.zip \
+ && unzip -q /tmp/awscliv2.zip -d /tmp \
+ && /tmp/aws/install --update \
+ && rm -rf /tmp/aws /tmp/awscliv2.zip
 
 COPY --from=protenix-env /opt/conda/envs/protenix /opt/conda/envs/protenix
 
