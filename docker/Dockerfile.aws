@@ -66,6 +66,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # SkyPilot connects to Docker workers over SSH after starting the container.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
+        awscli \
         build-essential \
         ca-certificates \
         curl \
@@ -104,7 +105,8 @@ RUN ln -sfn "${PROTENIX_ROOT_DIR}/checkpoint" /root/checkpoint \
  && ln -sfn "${PROTENIX_ROOT_DIR}/common" /root/common \
  && printf 'PROTENIX_ROOT_DIR=%s\nLAYERNORM_TYPE=torch\n' "${PROTENIX_ROOT_DIR}" >> /etc/environment
 
-RUN tmux -V \
+RUN aws --version \
+ && tmux -V \
  && protenix --help >/dev/null \
  && /opt/conda/envs/protenix/bin/python -c "import importlib.util; import torch; from rdkit import Chem; import biotite; import sklearn; import triton; import esm; from runner.batch_inference import protenix_cli; from protenix.data.inference.infer_dataloader import get_inference_dataloader; assert importlib.util.find_spec('cuequivariance_ops_torch'); assert torch.version.cuda == '12.8', torch.version.cuda; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('protenix cli', protenix_cli.name)" \
  && find /opt/conda/envs/protenix -type d -name "__pycache__" -prune -exec rm -rf {} + \
