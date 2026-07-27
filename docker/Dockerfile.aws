@@ -14,7 +14,10 @@ RUN micromamba create -y -n protenix -c conda-forge python=3.11 pip \
 ENV PATH="/opt/conda/envs/protenix/bin:${PATH}"
 
 WORKDIR /tmp/protenix-src
-COPY . .
+COPY setup.py README.md LICENSE requirements.txt ./
+COPY configs ./configs
+COPY protenix ./protenix
+COPY runner ./runner
 
 ARG PYTORCH_VERSION=2.7.1
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
@@ -58,8 +61,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PROTENIX_ENV=/opt/conda/envs/protenix \
     PROTENIX_ROOT_DIR=/opt/protenix_data \
     LAYERNORM_TYPE=torch \
-    PATH="/opt/conda/envs/protenix/bin:${PATH}" \
-    LD_LIBRARY_PATH="/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_cupti/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cufft/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cufile/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/curand/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusolver/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusparse/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusparselt/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nccl/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nvjitlink/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nvtx/lib"
+    PROTENIX_CUDA_LIBS="/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_cupti/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cufft/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cufile/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/curand/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusolver/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusparse/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/cusparselt/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nccl/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nvjitlink/lib:/opt/conda/envs/protenix/lib/python3.11/site-packages/nvidia/nvtx/lib"
 
 # SkyPilot connects to Docker workers over SSH after starting the container.
 RUN apt-get update \
@@ -85,6 +87,14 @@ RUN apt-get update \
 
 COPY --from=protenix-env /opt/conda/envs/protenix /opt/conda/envs/protenix
 
+RUN { \
+        echo '#!/usr/bin/env bash'; \
+        echo 'set -e'; \
+        echo 'export LD_LIBRARY_PATH="${PROTENIX_CUDA_LIBS}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"'; \
+        echo 'exec /opt/conda/envs/protenix/bin/protenix "$@"'; \
+    } > /usr/local/bin/protenix \
+ && chmod +x /usr/local/bin/protenix
+
 RUN --mount=type=bind,from=protenix_weights,source=/,target=/tmp/protenix_weights,ro \
     mkdir -p "${PROTENIX_ROOT_DIR}/checkpoint" "${PROTENIX_ROOT_DIR}/common" /workspace \
  && cp /tmp/protenix_weights/checkpoint/protenix-v2.pt "${PROTENIX_ROOT_DIR}/checkpoint/protenix-v2.pt" \
@@ -96,7 +106,7 @@ RUN ln -sfn "${PROTENIX_ROOT_DIR}/checkpoint" /root/checkpoint \
 
 RUN tmux -V \
  && protenix --help >/dev/null \
- && python -c "import importlib.util; import torch; from rdkit import Chem; import biotite; import sklearn; import triton; import esm; from runner.batch_inference import protenix_cli; from protenix.data.inference.infer_dataloader import get_inference_dataloader; assert importlib.util.find_spec('cuequivariance_ops_torch'); assert torch.version.cuda == '12.8', torch.version.cuda; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('protenix cli', protenix_cli.name)" \
+ && /opt/conda/envs/protenix/bin/python -c "import importlib.util; import torch; from rdkit import Chem; import biotite; import sklearn; import triton; import esm; from runner.batch_inference import protenix_cli; from protenix.data.inference.infer_dataloader import get_inference_dataloader; assert importlib.util.find_spec('cuequivariance_ops_torch'); assert torch.version.cuda == '12.8', torch.version.cuda; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('protenix cli', protenix_cli.name)" \
  && find /opt/conda/envs/protenix -type d -name "__pycache__" -prune -exec rm -rf {} + \
  && find /opt/conda/envs/protenix -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete
 
